@@ -78,8 +78,16 @@ class Alarm(DogfoodTimerCommon):
     Call an instance of this to update the alarm state of the cpx.
     Alarm state == pixels flashing red at 0.5Hz and beeping every minute.
     You have to keep calling it to keep getting the behaviors.
+
+    The module behaves this way instead of, say, using cp.tone() to beep
+    for beep_on_time_ms or time.sleep() to flash because none of those things
+    can happen asynchronously. We do not want beeps and flashes to block the
+    rest of the timer operations (such as detecting the lid raising or a
+    button being pushed). In other python environments, this logic could be
+    simpler and run in the background using "threading" or "multiprocessing".
+    In CircuitPython, we do not have these.
     '''
-    
+
     beep_interval_ms = 60000 # time between sets of beeps (1 minute)
     beep_on_time_ms = 300    # the length of one beep (300ms)
     beep_off_time_ms = 1000  # the time between beeps in a set (1 second)
@@ -131,6 +139,32 @@ class Alarm(DogfoodTimerCommon):
 
 
 class Timer(DogfoodTimerCommon):
+    '''
+    Implements an accelerometer-based timer for an Adafruit Circuit Playground
+    Express or Bluefruit.
+
+    Example:
+
+        timer = Timer()
+        while True:
+            timer()
+
+    This module depends on the instance being called continuously to measure
+    state and update its behaviors. It does no background work at all.
+
+    When the cp (Circuit Playground Express or Bluefruit) remains in the flat
+    orientation for at least 100ms, the lid is considered closed. When the cp
+    is not flat (literally, when abs(Z) is < 4 and abs(X) + abx(Y) > 4) for
+    at least 100ms, the lid is considered raised. The timer tracks a history
+    of raised times for purposes of undo().
+
+    Pressing button A on the cp will undo the last recorded raised time, and
+    pressing it more than once will keep undoing times until there are no more
+    times to undo. There is no redo.
+
+    Pressing button B will snooze the timer by setting the raised time to its
+    current value plus one hour.
+    '''
 
     green_threshold_ms   = 0
     yellow_threshold_ms  = 14400000 # 4 hours
@@ -150,6 +184,10 @@ class Timer(DogfoodTimerCommon):
         self.last_raised_time = self.now()
 
     def post(self):
+        '''
+        Simple power on self test
+        briefly sets the LEDs to each of the colors.
+        '''
         for color in self.colors:
             cp.pixels.fill(color)
             time.sleep(0.5)
@@ -165,11 +203,24 @@ class Timer(DogfoodTimerCommon):
         self.last_raised_time = raised_time
 
     def snooze(self):
+        '''
+        Because this is intended to run on a board that is mounted under
+        the lifting lid, the act of raising it to push the snooze button
+        will itself reset the timer, defeating the point of snoozing.
+        When the snooze button is pushed, first undo, then snooze.
+        '''
         if self.lid.raised:
             self.undo()
         self.record_time(raised_time=self.last_raised_time + 3600000)
     
     def __call__(self):
+        '''
+        Call your instance of Timer as often as you want the behaviors
+        updated (lights changing color, flashing and beeping timeing,
+        detecting and debouncing lid raises, etc. This is basically the
+        loop() function ported from an Arduino version of this project.
+        '''
+
         # calling the object returns true only once per lid raising.
         if self.lid():
             self.record_time()
