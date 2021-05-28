@@ -33,7 +33,10 @@ class Lid(DogfoodTimerCommon):
       print("this would always have worked, but only by truthy/falsey happenstance.")
       print("transition to the lowered state is also debounced.")
     '''
-    
+
+    RAISED = 1
+    LOWERED = 2
+
     def __init__(self):
         self.state = None
         self.pending_state = None
@@ -43,7 +46,15 @@ class Lid(DogfoodTimerCommon):
 
     def update_state(self):
         x, y, z = [abs(g) for g in cp.acceleration]
-        cur = z < 4 and x + y > 4
+        raised = z < 4 and x + y > 4
+        lowered = z >= 4 and x + y <= 4
+        cur = None
+        if raised:
+            cur = self.RAISED
+        elif lowered:
+            cur = self.LOWERED
+        else:
+            return
         if cur == self.state:
             self.pending_state = None
             self.pending_time = None
@@ -59,18 +70,17 @@ class Lid(DogfoodTimerCommon):
     
     @property
     def raised(self):
-        return self.state
+        return self.state == self.RAISED
     
     @property
     def lowered(self):
-        return not self.state
+        return self.state == self.LOWERED
     
     def __call__(self):
         self.update_state()
-        if self.new_state:
-            self.new_state = None
-            return True
-        return False
+        _ns = self.new_state
+        self.new_state = None
+        return _ns == self.RAISED
 
 
 class Alarm(DogfoodTimerCommon):
@@ -171,9 +181,9 @@ class Timer(DogfoodTimerCommon):
     red_threshold_ms     = 28800000 # 8 hours
     alarm_threshold_ms   = 43200000 # 12 hours
 
-    #yellow_threshold_ms  = 2000 # 4 hours
-    #red_threshold_ms     = 4000 # 8 hours
-    #alarm_threshold_ms   = 6000 # 12 hours
+    #yellow_threshold_ms  = 2000 # 2 seconds
+    #red_threshold_ms     = 4000 # 4 seconds
+    #alarm_threshold_ms   = 6000 # 6 seconds
 
     def __init__(self):
         self.post()
