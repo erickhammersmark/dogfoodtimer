@@ -15,11 +15,11 @@ class Lid(DogfoodTimerCommon):
     and low X + Y to low Z and high X + Y (i.e. when the
     board is flat, return False. When the board is on edge,
     return True.
-    
+
     Depends on the instance being called directly to update
     its state. Calling the instance will return True one time
     per lid raise.
-    
+
     lid = Lid()
     if lid.raised:
       print("this is impossible")
@@ -67,15 +67,15 @@ class Lid(DogfoodTimerCommon):
         else:
             self.pending_state = cur
             self.pending_time = self.now()
-    
+
     @property
     def raised(self):
         return self.state == self.RAISED
-    
+
     @property
     def lowered(self):
         return self.state == self.LOWERED
-    
+
     def __call__(self):
         self.update_state()
         _ns = self.new_state
@@ -102,7 +102,7 @@ class Alarm(DogfoodTimerCommon):
     beep_on_time_ms = 300    # the length of one beep (300ms)
     beep_off_time_ms = 1000  # the time between beeps in a set (1 second)
     n_beeps = 3              # the number of beeps in one set
-    
+
     def __init__(self):
         self.state = False
         self.time = self.now()
@@ -131,8 +131,8 @@ class Alarm(DogfoodTimerCommon):
                     cp.start_tone(1760)
                 else:
                     cp.stop_tone()
-                return    
-    
+                return
+
     def __call__(self):
         if cp.switch:
             self.beep()
@@ -145,7 +145,7 @@ class Alarm(DogfoodTimerCommon):
                 cp.pixels.fill(self.colors[2])
             else:
                 cp.pixels.fill(0)
-            
+
 
 
 class Timer(DogfoodTimerCommon):
@@ -185,6 +185,9 @@ class Timer(DogfoodTimerCommon):
     #red_threshold_ms     = 4000 # 4 seconds
     #alarm_threshold_ms   = 6000 # 6 seconds
 
+    UNDO_WAV = "undo.wav"
+    SNOOZE_WAV = "snooze.wav"
+
     def __init__(self):
         self.post()
         self.lid = Lid()
@@ -202,10 +205,12 @@ class Timer(DogfoodTimerCommon):
             cp.pixels.fill(color)
             time.sleep(0.5)
         cp.pixels.fill(0)
-    
-    def undo(self):
+
+    def undo(self, quiet=False):
         if self.history:
             self.last_raised_time = self.history.pop(-1)
+            if not quiet:
+                cp.play_file(self.UNDO_WAV)
 
     def record_time(self, raised_time=None):
         raised_time = raised_time or self.now()
@@ -220,9 +225,10 @@ class Timer(DogfoodTimerCommon):
         When the snooze button is pushed, first undo, then snooze.
         '''
         if self.lid.raised:
-            self.undo()
+            self.undo(quiet=True)
         self.record_time(raised_time=self.last_raised_time + 3600000)
-    
+        cp.play_file(self.SNOOZE_WAV)
+
     def __call__(self):
         '''
         Call your instance of Timer as often as you want the behaviors
@@ -234,7 +240,7 @@ class Timer(DogfoodTimerCommon):
         # calling the object returns true only once per lid raising.
         if self.lid():
             self.record_time()
-        
+
         # lid.raised is a property that will always be true if the lid is raised.
         if self.lid.raised:
             cp.stop_tone()
@@ -249,7 +255,7 @@ class Timer(DogfoodTimerCommon):
                 cp.pixels.fill(self.colors[1])
             else:
                 cp.pixels.fill(self.colors[0])
-                
+
         presses = cp.were_pressed
         new_presses = presses - self.prev_presses
         self.prev_presses = presses
@@ -262,4 +268,3 @@ class Timer(DogfoodTimerCommon):
 timer = Timer()
 while True:
     timer()
-
