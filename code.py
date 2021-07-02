@@ -127,17 +127,14 @@ class Alarm(DogfoodTimerCommon):
             return
         for _time in self.times:
             if delta > _time[0]:
-                if _time[1]:
+                if _time[1] and not cp.switch:
                     cp.start_tone(1760)
                 else:
                     cp.stop_tone()
                 return
 
     def __call__(self):
-        if cp.switch:
-            self.beep()
-        else:
-            cp.stop_tone()
+        self.beep()
         if self.now() - self.time >= 1000:
             self.state = not self.state
             self.time = self.now()
@@ -176,10 +173,11 @@ class Timer(DogfoodTimerCommon):
     current value plus one hour.
     '''
 
+    one_hour_ms          = 3600000
     green_threshold_ms   = 0
-    yellow_threshold_ms  = 14400000 # 4 hours
-    red_threshold_ms     = 28800000 # 8 hours
-    alarm_threshold_ms   = 43200000 # 12 hours
+    yellow_threshold_ms  = one_hour_ms * 4
+    red_threshold_ms     = one_hour_ms * 8
+    alarm_threshold_ms   = one_hour_ms * 12
 
     #yellow_threshold_ms  = 2000 # 2 seconds
     #red_threshold_ms     = 4000 # 4 seconds
@@ -215,6 +213,7 @@ class Timer(DogfoodTimerCommon):
     def record_time(self, raised_time=None):
         raised_time = raised_time or self.now()
         self.history.append(self.last_raised_time)
+        self.history = self.history[-10:]
         self.last_raised_time = raised_time
 
     def snooze(self):
@@ -224,9 +223,13 @@ class Timer(DogfoodTimerCommon):
         will itself reset the timer, defeating the point of snoozing.
         When the snooze button is pushed, first undo, then snooze.
         '''
+        if self.now() - self.last_raised_time < alarm_threshold_ms:
+            return
+
         if self.lid.raised:
             self.undo(quiet=True)
-        self.record_time(raised_time=self.last_raised_time + 3600000)
+
+        self.record_time(raised_time=self.now() - (alarm_threshold_ms - one_hour_ms))
         cp.play_file(self.SNOOZE_WAV)
 
     def __call__(self):
