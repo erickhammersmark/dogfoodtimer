@@ -4,8 +4,15 @@ from adafruit_circuitplayground import cp
 
 class DogfoodTimerCommon(object):
     colors = [ (0, 255, 0), (255, 255, 0), (255, 0, 0) ]
+    debug = False
+    
     def now(self):
         return int(time.monotonic() * 1000)
+
+    def db(self, msg):
+        if self.debug:
+            print(msg)
+
 
 class Lid(DogfoodTimerCommon):
     RAISED = 1
@@ -106,14 +113,11 @@ class Alarm(DogfoodTimerCommon):
 
 class Timer(DogfoodTimerCommon):
     one_hour_ms          = 3600000
+    #one_hour_ms          =  500 # 500ms
     green_threshold_ms   = 0
     yellow_threshold_ms  = one_hour_ms * 4
     red_threshold_ms     = one_hour_ms * 8
     alarm_threshold_ms   = one_hour_ms * 12
-
-    #yellow_threshold_ms  = 2000 # 2 seconds
-    #red_threshold_ms     = 4000 # 4 seconds
-    #alarm_threshold_ms   = 6000 # 6 seconds
 
     UNDO_WAV = "undo.wav"
     SNOOZE_WAV = "snooze.wav"
@@ -142,6 +146,7 @@ class Timer(DogfoodTimerCommon):
         cp.pixels.fill(0)
 
     def undo(self, quiet=False):
+        self.db("Undo pressed")
         if self.history:
             self.last_raised_time = self.history.pop(-1)
             if not quiet:
@@ -157,17 +162,13 @@ class Timer(DogfoodTimerCommon):
         self.last_raised_time = raised_time
 
     def snooze(self):
-        '''
-        Because this is intended to run on a board that is mounted under
-        the lifting lid, the act of raising it to push the snooze button
-        will itself reset the timer, defeating the point of snoozing.
-        When the snooze button is pushed, first undo, then snooze.
-        '''
-        if self.now() - self.last_raised_time < self.alarm_threshold_ms:
-            return
-
+        self.db("Snooze pressed")
+        
         if self.lid.raised:
             self.undo(quiet=True)
+
+        if self.now() - self.last_raised_time < self.alarm_threshold_ms:
+            return
 
         self.record_time(raised_time=self.now() - (self.alarm_threshold_ms - self.one_hour_ms))
         try:
@@ -176,13 +177,6 @@ class Timer(DogfoodTimerCommon):
             pass
 
     def __call__(self):
-        '''
-        Call your instance of Timer as often as you want the behaviors
-        updated (lights changing color, flashing and beeping timeing,
-        detecting and debouncing lid raises, etc. This is basically the
-        loop() function ported from an Arduino version of this project.
-        '''
-
         # calling the object returns true only once per lid raising.
         if self.lid():
             self.record_time()
