@@ -163,13 +163,13 @@ class Timer(DogfoodTimerCommon):
         will itself reset the timer, defeating the point of snoozing.
         When the snooze button is pushed, first undo, then snooze.
         '''
-        if self.now() - self.last_raised_time < alarm_threshold_ms:
+        if self.now() - self.last_raised_time < self.alarm_threshold_ms:
             return
 
         if self.lid.raised:
             self.undo(quiet=True)
 
-        self.record_time(raised_time=self.now() - (alarm_threshold_ms - one_hour_ms))
+        self.record_time(raised_time=self.now() - (self.alarm_threshold_ms - self.one_hour_ms))
         try:
             cp.play_file(self.SNOOZE_WAV)
         except:
