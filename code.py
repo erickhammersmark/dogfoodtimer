@@ -3,7 +3,7 @@ import time
 from adafruit_circuitplayground import cp
 
 class DogfoodTimerCommon(object):
-    colors = [ (0, 255, 0), (255, 255, 0), (255, 0, 0) ]
+    colors = [ (0, 255, 0), (255, 128, 0), (255, 0, 0) ]
     debug = False
     
     def now(self):
