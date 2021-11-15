@@ -2,10 +2,11 @@ import os
 import time
 from adafruit_circuitplayground import cp
 
+
 class DogfoodTimerCommon(object):
-    colors = [ (0, 255, 0), (255, 128, 0), (255, 0, 0) ]
+    colors = { "green": (0, 255, 0), "yellow": (255, 128, 0), "red": (255, 0, 0) }
     debug = False
-    
+
     def now(self):
         return int(time.monotonic() * 1000)
 
@@ -106,7 +107,7 @@ class Alarm(DogfoodTimerCommon):
             self.state = not self.state
             self.time = self.now()
             if self.state:
-                cp.pixels.fill(self.colors[2])
+                cp.pixels.fill(self.colors["red"])
             else:
                 cp.pixels.fill(0)
 
@@ -127,8 +128,10 @@ class Timer(DogfoodTimerCommon):
         self.lid = Lid()
         self.alarm = Alarm()
         self.history = []
-        self.prev_presses = set()
         self.last_raised_time = self.now()
+
+        self.prev_presses = set()
+
         for file in [self.UNDO_WAV, self.SNOOZE_WAV]:
             try:
                 os.stat(file)
@@ -140,8 +143,8 @@ class Timer(DogfoodTimerCommon):
         Simple power on self test
         briefly sets the LEDs to each of the colors.
         '''
-        for color in self.colors:
-            cp.pixels.fill(color)
+        for color in ["green", "yellow", "red"]:
+            cp.pixels.fill(self.colors[color])
             time.sleep(0.5)
         cp.pixels.fill(0)
 
@@ -163,7 +166,7 @@ class Timer(DogfoodTimerCommon):
 
     def snooze(self):
         self.db("Snooze pressed")
-        
+
         if self.lid.raised:
             self.undo(quiet=True)
 
@@ -175,6 +178,9 @@ class Timer(DogfoodTimerCommon):
             cp.play_file(self.SNOOZE_WAV)
         except:
             pass
+
+    def buttonx(self, button):
+        return getattr(cp, "button_{}".format(button))
 
     def __call__(self):
         # calling the object returns true only once per lid raising.
@@ -190,20 +196,21 @@ class Timer(DogfoodTimerCommon):
             if delta > self.alarm_threshold_ms:
                 self.alarm()
             elif delta > self.red_threshold_ms:
-                cp.pixels.fill(self.colors[2])
+                cp.pixels.fill(self.colors["red"])
             elif delta > self.yellow_threshold_ms:
-                cp.pixels.fill(self.colors[1])
+                cp.pixels.fill(self.colors["yellow"])
             else:
-                cp.pixels.fill(self.colors[0])
+                cp.pixels.fill(self.colors["green"])
 
-        presses = cp.were_pressed
+        presses = set(filter(self.buttonx, ["a", "b"]))
         new_presses = presses - self.prev_presses
         self.prev_presses = presses
         for button in new_presses:
-            if button == "A":
+            if button == "a":
                 self.undo()
-            elif button == "B":
+            elif button == "b":
                 self.snooze()
+
 
 timer = Timer()
 while True:
