@@ -167,11 +167,11 @@ class Timer(DogfoodTimerCommon):
     def snooze(self):
         self.db("Snooze pressed")
 
-        if self.lid.raised:
-            self.undo(quiet=True)
-
         if self.now() - self.last_raised_time < self.alarm_threshold_ms:
             return
+
+        if self.lid.raised:
+            self.undo(quiet=True)
 
         self.record_time(raised_time=self.now() - (self.alarm_threshold_ms - self.one_hour_ms))
         try:
