@@ -114,7 +114,7 @@ class Alarm(DogfoodTimerCommon):
 
 class Timer(DogfoodTimerCommon):
     one_hour_ms          = 3600000
-    #one_hour_ms          =  500 # 500ms
+    #one_hour_ms          = 2000
     green_threshold_ms   = 0
     yellow_threshold_ms  = one_hour_ms * 4
     red_threshold_ms     = one_hour_ms * 8
@@ -150,13 +150,16 @@ class Timer(DogfoodTimerCommon):
 
     def undo(self, quiet=False):
         self.db("Undo pressed")
+        undone_time = None
         if self.history:
+            undone_time = self.last_raised_time
             self.last_raised_time = self.history.pop(-1)
             if not quiet:
                 try:
                     cp.play_file(self.UNDO_WAV)
                 except:
                     pass
+        return undone_time
 
     def record_time(self, raised_time=None):
         raised_time = raised_time or self.now()
@@ -167,11 +170,15 @@ class Timer(DogfoodTimerCommon):
     def snooze(self):
         self.db("Snooze pressed")
 
-        if self.now() - self.last_raised_time < self.alarm_threshold_ms:
-            return
+        undone_time = None
 
         if self.lid.raised:
-            self.undo(quiet=True)
+            undone_time = self.undo(quiet=True)
+
+        if self.now() - self.last_raised_time < self.alarm_threshold_ms:
+            if undone_time:
+                self.record_time(undone_time)
+            return
 
         self.record_time(raised_time=self.now() - (self.alarm_threshold_ms - self.one_hour_ms))
         try:
@@ -181,12 +188,8 @@ class Timer(DogfoodTimerCommon):
 
     def buttonx(self, button):
         return getattr(cp, "button_{}".format(button))
-
-    def __call__(self):
-        # calling the object returns true only once per lid raising.
-        if self.lid():
-            self.record_time()
-
+    
+    def update_lights(self):
         # lid.raised is a property that will always be true if the lid is raised.
         if self.lid.raised:
             cp.stop_tone()
@@ -202,6 +205,7 @@ class Timer(DogfoodTimerCommon):
             else:
                 cp.pixels.fill(self.colors["green"])
 
+    def handle_buttons(self):
         presses = set(filter(self.buttonx, ["a", "b"]))
         new_presses = presses - self.prev_presses
         self.prev_presses = presses
@@ -211,7 +215,15 @@ class Timer(DogfoodTimerCommon):
             elif button == "b":
                 self.snooze()
 
+    def __call__(self):
+        # calling the Lid object returns true only once per lid raising.
+        if self.lid():
+            self.record_time()
+
+        self.update_lights()
+        self.handle_buttons()
 
 timer = Timer()
 while True:
     timer()
+
