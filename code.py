@@ -66,50 +66,91 @@ class Lid(DogfoodTimerCommon):
 
 
 class Alarm(DogfoodTimerCommon):
-    beep_interval_ms = 60000 # time between sets of beeps (1 minute)
-    beep_on_time_ms = 300    # the length of one beep (300ms)
+    visible_alarm_interval_ms = 1000 # flash the LEDs on a 2-second period
+
+#    audible_alarm_interval_max_ms = 30 * 1000 # 10 seconds
+#    audible_alarm_interval_min_ms = 5 * 1000 # 10 seconds
+    audible_alarm_interval_max_ms = 3600 * 1000 # 1 hour
+    audible_alarm_interval_min_ms = 60 * 1000 # 1 minute
+
+    beep_on_time_ms = 600    # the length of one beep (600ms)
     beep_off_time_ms = 1000  # the time between beeps in a set (1 second)
     n_beeps = 3              # the number of beeps in one set
 
     def __init__(self):
-        self.state = False
-        self.time = self.now()
-        self.beep_time = 0
+        self.beep_state = False
+        self.reset()
 
-        _time = self.beep_interval_ms
-        self.times = []
-        for n in range(0, self.n_beeps):
-            self.times.append((_time, True))
-            _time += self.beep_on_time_ms
-            self.times.append((_time, False))
-            _time += self.beep_off_time_ms
-        self.times.reverse()
+    def reset(self):
+        self.alarm_state = False
+        self.led_state = True
+        self.next_visible_alarm_time_ms = 0
+        self.next_audible_alarm_time_ms = 0
+        self.audible_alarm_interval_ms = self.audible_alarm_interval_max_ms
 
-    def beep(self):
-        delta = self.now() - self.beep_time
-        if delta < self.beep_interval_ms:
-            return
-        if delta > self.times[0][0]:
-            cp.stop_tone()
-            self.beep_time = self.now()
-            return
-        for _time in self.times:
-            if delta > _time[0]:
-                if _time[1] and not cp.switch:
+        self.next_beep_update_time_ms = 0
+        self.beep_set(False)
+        self.beep_num = 0
+        self.actually_beeping = False
+
+    def trigger(self):
+        self.alarm_state = True
+        self.next_visible_alarm_time_ms = self.now()
+        self.next_audible_alarm_time_ms = self.now()
+
+    def beep_set(self, state):
+        if state != self.beep_state:
+            if state:
+                if cp.switch:
+                    self.actually_beeping = True
                     cp.start_tone(1760)
-                else:
-                    cp.stop_tone()
-                return
+            elif self.actually_beeping:
+                self.actually_beeping = False
+                cp.stop_tone()
+            self.beep_state = state
 
-    def __call__(self):
-        self.beep()
-        if self.now() - self.time >= 1000:
-            self.state = not self.state
-            self.time = self.now()
-            if self.state:
+    def update_beep(self):
+        if self.now() >= self.next_audible_alarm_time_ms:
+            self.next_audible_alarm_time_ms += self.audible_alarm_interval_ms
+            self.audible_alarm_interval_ms = max(self.audible_alarm_interval_ms / 2, self.audible_alarm_interval_min_ms)
+            self.next_beep_update_time_ms = self.now()
+            self.beep_set(False)
+            self.beep_num = 0
+
+        if self.next_beep_update_time_ms != 0 and self.now() >= self.next_beep_update_time_ms:
+            if self.beep_state:
+                self.beep_set(False)
+                self.beep_num += 1
+                if self.beep_num >= self.n_beeps:
+                    self.next_beep_update_time_ms = 0
+                    self.beep_num = 0
+                    return
+                self.next_beep_update_time_ms += self.beep_off_time_ms
+            else:
+                self.beep_set(True)
+                self.next_beep_update_time_ms += self.beep_on_time_ms
+
+    def update_lights(self):
+        if self.now() >= self.next_visible_alarm_time_ms:
+            self.next_visible_alarm_time_ms += self.visible_alarm_interval_ms
+            self.led_state = not self.led_state
+            if self.led_state:
                 cp.pixels.fill(self.colors["red"])
             else:
                 cp.pixels.fill(0)
+
+    def __call__(self, alarm_state=True):
+        if alarm_state and not self.alarm_state:
+            self.trigger()
+
+        self.alarm_state = alarm_state
+
+        if not self.alarm_state:
+            self.reset()
+            return
+
+        self.update_beep()
+        self.update_lights()
 
 
 class Timer(DogfoodTimerCommon):
@@ -188,7 +229,7 @@ class Timer(DogfoodTimerCommon):
 
     def buttonx(self, button):
         return getattr(cp, "button_{}".format(button))
-    
+
     def update_lights(self):
         # lid.raised is a property that will always be true if the lid is raised.
         if self.lid.raised:
@@ -219,6 +260,7 @@ class Timer(DogfoodTimerCommon):
         # calling the Lid object returns true only once per lid raising.
         if self.lid():
             self.record_time()
+            self.alarm(alarm_state=False)
 
         self.update_lights()
         self.handle_buttons()
@@ -226,4 +268,3 @@ class Timer(DogfoodTimerCommon):
 timer = Timer()
 while True:
     timer()
-
