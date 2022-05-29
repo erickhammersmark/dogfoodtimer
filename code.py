@@ -4,7 +4,7 @@ from os import stat
 
 class DogfoodTimerCommon(object):
     #one_hour_ms = 2000
-    one_hour_ms = 360000
+    one_hour_ms = 3600000
     colors = { "green": (0, 255, 0),
                "yellow": (255, 128, 0),
                "red": (255, 0, 0),
