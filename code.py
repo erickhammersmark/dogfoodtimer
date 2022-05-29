@@ -1,10 +1,14 @@
-import os
 import time
 from adafruit_circuitplayground import cp
-
+from os import stat
 
 class DogfoodTimerCommon(object):
-    colors = { "green": (0, 255, 0), "yellow": (255, 128, 0), "red": (255, 0, 0) }
+    #one_hour_ms = 2000
+    one_hour_ms = 360000
+    colors = { "green": (0, 255, 0),
+               "yellow": (255, 128, 0),
+               "red": (255, 0, 0),
+               "off": (0, 0, 0) }
     debug = False
 
     def now(self):
@@ -59,6 +63,10 @@ class Lid(DogfoodTimerCommon):
         return self.state == self.LOWERED
 
     def __call__(self):
+        """
+        Calling this object will return True exactly once
+        per raising of the lid.
+        """
         self.update_state()
         _ns = self.new_state
         self.new_state = None
@@ -68,17 +76,18 @@ class Lid(DogfoodTimerCommon):
 class Alarm(DogfoodTimerCommon):
     visible_alarm_interval_ms = 1000 # flash the LEDs on a 2-second period
 
-#    audible_alarm_interval_max_ms = 30 * 1000 # 10 seconds
-#    audible_alarm_interval_min_ms = 5 * 1000 # 10 seconds
     audible_alarm_interval_max_ms = 3600 * 1000 # 1 hour
     audible_alarm_interval_min_ms = 60 * 1000 # 1 minute
+    #audible_alarm_interval_max_ms = 30 * 1000 # 30 seconds
+    #audible_alarm_interval_min_ms = 5 * 1000 # 5 seconds
 
     beep_on_time_ms = 600    # the length of one beep (600ms)
     beep_off_time_ms = 1000  # the time between beeps in a set (1 second)
     n_beeps = 3              # the number of beeps in one set
 
-    def __init__(self):
+    def __init__(self, timer):
         self.beep_state = False
+        self.timer = timer
         self.reset()
 
     def reset(self):
@@ -89,9 +98,8 @@ class Alarm(DogfoodTimerCommon):
         self.audible_alarm_interval_ms = self.audible_alarm_interval_max_ms
 
         self.next_beep_update_time_ms = 0
-        self.beep_set(False)
         self.beep_num = 0
-        self.actually_beeping = False
+        self.beep_set(False)
 
     def trigger(self):
         self.alarm_state = True
@@ -101,7 +109,7 @@ class Alarm(DogfoodTimerCommon):
     def beep_set(self, state):
         if state != self.beep_state:
             if state:
-                if cp.switch:
+                if not cp.switch:
                     self.actually_beeping = True
                     cp.start_tone(1760)
             elif self.actually_beeping:
@@ -135,9 +143,9 @@ class Alarm(DogfoodTimerCommon):
             self.next_visible_alarm_time_ms += self.visible_alarm_interval_ms
             self.led_state = not self.led_state
             if self.led_state:
-                cp.pixels.fill(self.colors["red"])
+                timer.set_color("red")
             else:
-                cp.pixels.fill(0)
+                timer.set_color("off")
 
     def __call__(self, alarm_state=True):
         if alarm_state and not self.alarm_state:
@@ -154,40 +162,44 @@ class Alarm(DogfoodTimerCommon):
 
 
 class Timer(DogfoodTimerCommon):
-    one_hour_ms          = 3600000
-    #one_hour_ms          = 2000
-    green_threshold_ms   = 0
-    yellow_threshold_ms  = one_hour_ms * 4
-    red_threshold_ms     = one_hour_ms * 8
-    alarm_threshold_ms   = one_hour_ms * 12
-
     UNDO_WAV = "undo.wav"
     SNOOZE_WAV = "snooze.wav"
 
     def __init__(self):
+        self.color = None
         self.post()
         self.lid = Lid()
-        self.alarm = Alarm()
+        self.alarm = Alarm(self)
         self.history = []
         self.last_raised_time = self.now()
+
+        self.green_threshold_ms   = 0
+        self.yellow_threshold_ms  = self.one_hour_ms * 4
+        self.red_threshold_ms     = self.one_hour_ms * 8
+        self.alarm_threshold_ms   = self.one_hour_ms * 12
+
 
         self.prev_presses = set()
 
         for file in [self.UNDO_WAV, self.SNOOZE_WAV]:
             try:
-                os.stat(file)
+                stat(file)
             except Exception as e:
                 print("File %s not found!" % (file))
 
+    def set_color(self, color):
+        if color in self.colors:
+            color = self.colors[color]
+        if color == self.color:
+            return
+        self.color = color
+        cp.pixels.fill(color)
+
     def post(self):
-        '''
-        Simple power on self test
-        briefly sets the LEDs to each of the colors.
-        '''
-        for color in ["green", "yellow", "red"]:
-            cp.pixels.fill(self.colors[color])
+        for color in self.colors:
+            self.set_color(color)
             time.sleep(0.5)
-        cp.pixels.fill(0)
+        self.set_color("off")
 
     def undo(self, quiet=False):
         self.db("Undo pressed")
@@ -231,20 +243,18 @@ class Timer(DogfoodTimerCommon):
         return getattr(cp, "button_{}".format(button))
 
     def update_lights(self):
-        # lid.raised is a property that will always be true if the lid is raised.
         if self.lid.raised:
-            cp.stop_tone()
-            cp.pixels.fill(0)
+            self.set_color("off")
         else:
             delta = self.now() - self.last_raised_time
             if delta > self.alarm_threshold_ms:
                 self.alarm()
             elif delta > self.red_threshold_ms:
-                cp.pixels.fill(self.colors["red"])
+                self.set_color("red")
             elif delta > self.yellow_threshold_ms:
-                cp.pixels.fill(self.colors["yellow"])
+                self.set_color("yellow")
             else:
-                cp.pixels.fill(self.colors["green"])
+                self.set_color("green")
 
     def handle_buttons(self):
         presses = set(filter(self.buttonx, ["a", "b"]))
@@ -257,7 +267,11 @@ class Timer(DogfoodTimerCommon):
                 self.snooze()
 
     def __call__(self):
-        # calling the Lid object returns true only once per lid raising.
+        """
+        Nothing in the "Timer" class actually operates on a timer.
+        This object is intended to be called in a loop forever, and
+        this function does all the things.
+        """
         if self.lid():
             self.record_time()
             self.alarm(alarm_state=False)
