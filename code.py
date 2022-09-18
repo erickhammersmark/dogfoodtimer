@@ -1,10 +1,61 @@
 import time
 from adafruit_circuitplayground import cp
+from collections import defaultdict
 from os import stat
 
+class Logger(object):
+    def __init__(self, *args, filename="log.txt", **kwargs):
+        self.filename = filename
+        try:
+            self.logfile = open(filename, "a")
+        except:
+            print("Unable to open log file %s for append. No logging will be performed." % filename)
+            self.logfile = None
+
+    def __call__(self, *args, **kwargs):
+        msg = " ".join((str(arg) for arg in args))
+        if self.logfile == None:
+            print(msg)
+        else:
+            self.logfile.write(msg)
+            if msg[-1] != "\n":
+                self.logfile.write("\n")
+            self.logfile.flush()
+
+class Histogram(object):
+    def __init__(self, *args, **kwargs):
+        self.data = defaultdict(int)
+
+    def add(self, value):
+        if value == 0:
+            bucket = 0
+        else:
+            remaining = value
+            count = 0
+            while remaining:
+                count += 1
+                remaining >>= 1
+
+            bucket = 1
+            while count:
+                if bucket == value:
+                    break
+                bucket <<= 1
+                count -= 1
+
+        self.data[bucket] += 1
+
+    def __repr__(self):
+        buckets = list(self.data.keys())
+        buckets.sort()
+        result = []
+        for key in buckets:
+            result.append("%d: %d" % (key, self.data[key]))
+        return ", ".join(result)
+
 class DogfoodTimerCommon(object):
-    #one_hour_ms = 2000
-    one_hour_ms = 3600000
+    one_hour_ms = 2000
+    #one_hour_ms = 3600000
     colors = { "green": (0, 255, 0),
                "yellow": (255, 128, 0),
                "red": (255, 0, 0),
@@ -29,8 +80,10 @@ class Lid(DogfoodTimerCommon):
         self.pending_time = None
         self.debounce_threshold_ms = 100
         self.new_state = None
+        self.update_times = Histogram()
 
     def update_state(self):
+        start = self.now()
         x, y, z = [abs(g) for g in cp.acceleration]
         raised = z < 4 and x + y > 4
         lowered = z >= 4 and x + y <= 4
@@ -40,6 +93,7 @@ class Lid(DogfoodTimerCommon):
         elif lowered:
             cur = self.LOWERED
         else:
+            self.update_times.add(self.now() - start)
             return
         if cur == self.state:
             self.pending_state = None
@@ -53,6 +107,8 @@ class Lid(DogfoodTimerCommon):
         else:
             self.pending_state = cur
             self.pending_time = self.now()
+
+        self.update_times.add(self.now() - start)
 
     @property
     def raised(self):
@@ -173,6 +229,13 @@ class Timer(DogfoodTimerCommon):
         self.history = []
         self.last_raised_time = self.now()
 
+        self.log_interval_ms = self.one_hour_ms
+        self.next_log_time_ms = self.now()
+
+        self.lid_times = Histogram()
+        self.lights_times = Histogram()
+        self.buttons_times = Histogram()
+
         self.green_threshold_ms   = 0
         self.yellow_threshold_ms  = self.one_hour_ms * 4
         self.red_threshold_ms     = self.one_hour_ms * 8
@@ -273,11 +336,24 @@ class Timer(DogfoodTimerCommon):
         this function does all the things.
         """
         if self.lid():
+            start = self.now()
             self.record_time()
             self.alarm(alarm_state=False)
+            self.lid_times.add(self.now() - start)
 
+        start = self.now()
         self.update_lights()
+        self.lights_times.add(self.now() - start)
+        start = self.now()
         self.handle_buttons()
+        self.buttons_times.add(self.now() - start)
+
+        if self.now() >= self.next_log_time_ms:
+            self.next_log_time_ms += self.log_interval_ms
+            self.log(self.now(), "Lid update times", self.lid.update_times)
+            self.log(self.now(), "Timer lid times", self.lid_times)
+            self.log(self.now(), "Timer lights times", self.lights_times)
+            self.log(self.now(), "Timer buttons times", self.buttons_times)
 
 timer = Timer()
 while True:
