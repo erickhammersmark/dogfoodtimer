@@ -30,9 +30,9 @@ class Lid(TimerCommon):
         lowered = z >= 4 and x + y <= 4
         cur = None
         if raised:
-            cur = self.LOWERED
-        elif lowered:
             cur = self.RAISED
+        elif lowered:
+            cur = self.LOWERED
         else:
             return
         if cur == self.state:
@@ -57,11 +57,11 @@ class Lid(TimerCommon):
     def lowered(self):
         return self.state == self.LOWERED
 
-    def __call__(self):
+    def __call__(self, trigger=RAISED):
         self.update_state()
         _ns = self.new_state
         self.new_state = None
-        return _ns == self.RAISED
+        return _ns == trigger
 
 
 class Alarm(TimerCommon):
@@ -76,13 +76,14 @@ class Alarm(TimerCommon):
 
     def reset(self):
         self.alarm_state = False
-        self.led_state = True
+        self.led_state = False
         self.next_visible_alarm_time_ms = 0
         self.next_audible_alarm_time_ms = 0
         self.audible_alarm_interval_ms = self.audible_alarm_interval_max_ms
 
     def trigger(self):
         self.alarm_state = True
+        self.led_state = True
         self.next_visible_alarm_time_ms = self.now()
         self.next_audible_alarm_time_ms = self.now()
 
@@ -149,17 +150,11 @@ class Timer(TimerCommon):
             time.sleep(0.5)
         self.set_color("off")
 
-    def record_time(self):
-        self.last_raised_time = self.now()
-
-    def snooze(self):
-        self.record_time()
-
     def buttonx(self, button):
         return getattr(cp, "button_{}".format(button))
 
     def update_lights(self):
-        if self.lid.raised:
+        if self.lid.lowered:
             self.set_color("off")
         else:
             delta = self.now() - self.last_raised_time
@@ -183,9 +178,13 @@ class Timer(TimerCommon):
                 self.snooze()
 
     def __call__(self):
-        if self.lid():
-            self.record_time()
+        self.lid.update_state()
+        if self.lid.lowered:
             self.alarm(alarm_state=False)
+            self.set_color("off")
+            return
+        elif self.lid():
+            self.last_raised_time = self.now()
 
         self.update_lights()
         self.handle_buttons()
