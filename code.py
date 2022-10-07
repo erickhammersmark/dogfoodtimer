@@ -1,6 +1,5 @@
 import time
 from adafruit_circuitplayground import cp
-from collections import defaultdict
 from os import stat
 
 class Logger(object):
@@ -14,17 +13,19 @@ class Logger(object):
 
     def __call__(self, *args, **kwargs):
         msg = " ".join((str(arg) for arg in args))
-        if self.logfile == None:
-            print(msg)
-        else:
+        if not msg:
+            return
+        try:
             self.logfile.write(msg)
             if msg[-1] != "\n":
                 self.logfile.write("\n")
             self.logfile.flush()
+        except:
+            print(msg)
 
 class Histogram(object):
     def __init__(self, *args, **kwargs):
-        self.data = defaultdict(int)
+        self.data = {}
 
     def add(self, value):
         if value == 0:
@@ -43,6 +44,9 @@ class Histogram(object):
                 bucket <<= 1
                 count -= 1
 
+        if bucket not in self.data:
+            self.data[bucket] = 0
+
         self.data[bucket] += 1
 
     def __repr__(self):
@@ -54,8 +58,8 @@ class Histogram(object):
         return ", ".join(result)
 
 class DogfoodTimerCommon(object):
-    one_hour_ms = 2000
-    #one_hour_ms = 3600000
+    #one_hour_ms = 2000
+    one_hour_ms = 3600000
     colors = { "green": (0, 255, 0),
                "yellow": (255, 128, 0),
                "red": (255, 0, 0),
@@ -231,6 +235,7 @@ class Timer(DogfoodTimerCommon):
 
         self.log_interval_ms = self.one_hour_ms
         self.next_log_time_ms = self.now()
+        self.log = Logger()
 
         self.lid_times = Histogram()
         self.lights_times = Histogram()
@@ -357,4 +362,9 @@ class Timer(DogfoodTimerCommon):
 
 timer = Timer()
 while True:
-    timer()
+    try:
+        timer()
+    except Exception as e:
+        with open("error.log", "a") as ERR:
+            ERR.write("Error at {}: {}".format(time.time(), e))
+            ERR.close()
