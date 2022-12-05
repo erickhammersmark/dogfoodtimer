@@ -7,21 +7,20 @@ class Logger(object):
         self.filename = filename
         try:
             self.logfile = open(filename, "a")
-        except:
+        except Exception as e:
+            print(e)
             print("Unable to open log file %s for append. No logging will be performed." % filename)
             self.logfile = None
 
     def __call__(self, *args, **kwargs):
         msg = " ".join((str(arg) for arg in args))
-        if not msg:
-            return
-        try:
+        if self.logfile == None:
+            print(msg)
+        else:
             self.logfile.write(msg)
             if msg[-1] != "\n":
                 self.logfile.write("\n")
             self.logfile.flush()
-        except:
-            print(msg)
 
 class Histogram(object):
     def __init__(self, *args, **kwargs):
@@ -156,7 +155,8 @@ class Alarm(DogfoodTimerCommon):
         self.next_visible_alarm_time_ms = 0
         self.next_audible_alarm_time_ms = 0
         self.audible_alarm_interval_ms = self.audible_alarm_interval_max_ms
-
+        self.beep_state = False
+        self.actually_beeping = False
         self.next_beep_update_time_ms = 0
         self.beep_num = 0
         self.beep_set(False)
@@ -235,11 +235,12 @@ class Timer(DogfoodTimerCommon):
 
         self.log_interval_ms = self.one_hour_ms
         self.next_log_time_ms = self.now()
-        self.log = Logger()
 
         self.lid_times = Histogram()
         self.lights_times = Histogram()
         self.buttons_times = Histogram()
+
+        self.log = Logger()
 
         self.green_threshold_ms   = 0
         self.yellow_threshold_ms  = self.one_hour_ms * 4
@@ -365,6 +366,4 @@ while True:
     try:
         timer()
     except Exception as e:
-        with open("error.log", "a") as ERR:
-            ERR.write("Error at {}: {}".format(time.time(), e))
-            ERR.close()
+        timer.log(e)
