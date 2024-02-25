@@ -1,9 +1,12 @@
+import gc
 import time
 from adafruit_circuitplayground import cp
 from os import stat
 
 class Logger(object):
     def __init__(self, *args, filename="log.txt", **kwargs):
+        self.logfile = None
+        """
         self.filename = filename
         try:
             self.logfile = open(filename, "a")
@@ -11,16 +14,19 @@ class Logger(object):
             print(e)
             print("Unable to open log file %s for append. No logging will be performed." % filename)
             self.logfile = None
+        """
 
     def __call__(self, *args, **kwargs):
         msg = " ".join((str(arg) for arg in args))
         if self.logfile == None:
             print(msg)
+        """
         else:
             self.logfile.write(msg)
             if msg[-1] != "\n":
                 self.logfile.write("\n")
             self.logfile.flush()
+        """
 
 class Histogram(object):
     def __init__(self, *args, **kwargs):
@@ -86,7 +92,7 @@ class Lid(DogfoodTimerCommon):
         self.update_times = Histogram()
 
     def update_state(self):
-        start = self.now()
+        #start = self.now()
         x, y, z = [abs(g) for g in cp.acceleration]
         raised = z < 4 and x + y > 4
         lowered = z >= 4 and x + y <= 4
@@ -111,7 +117,7 @@ class Lid(DogfoodTimerCommon):
             self.pending_state = cur
             self.pending_time = self.now()
 
-        self.update_times.add(self.now() - start)
+        #self.update_times.add(self.now() - start)
 
     @property
     def raised(self):
@@ -314,6 +320,7 @@ class Timer(DogfoodTimerCommon):
     def update_lights(self):
         if self.lid.raised:
             self.set_color("off")
+            gc.collect()
         else:
             delta = self.now() - self.last_raised_time
             if delta > self.alarm_threshold_ms:
@@ -342,28 +349,53 @@ class Timer(DogfoodTimerCommon):
         this function does all the things.
         """
         if self.lid():
-            start = self.now()
-            self.record_time()
             self.alarm(alarm_state=False)
-            self.lid_times.add(self.now() - start)
+            self.record_time()
 
-        start = self.now()
         self.update_lights()
-        self.lights_times.add(self.now() - start)
-        start = self.now()
         self.handle_buttons()
-        self.buttons_times.add(self.now() - start)
 
-        if self.now() >= self.next_log_time_ms:
-            self.next_log_time_ms += self.log_interval_ms
-            self.log(self.now(), "Lid update times", self.lid.update_times)
-            self.log(self.now(), "Timer lid times", self.lid_times)
-            self.log(self.now(), "Timer lights times", self.lights_times)
-            self.log(self.now(), "Timer buttons times", self.buttons_times)
+#        if self.now() >= self.next_log_time_ms:
+#            self.next_log_time_ms += self.log_interval_ms
+#            self.log(self.now(), "Lid update times", self.lid.update_times)
+#            self.log(self.now(), "Timer lid times", self.lid_times)
+#            self.log(self.now(), "Timer lights times", self.lights_times)
+#            self.log(self.now(), "Timer buttons times", self.buttons_times)
+#        if self.lid():
+#            start = self.now()
+#            self.record_time()
+#            self.alarm(alarm_state=False)
+#            self.lid_times.add(self.now() - start)
+#
+#        start = self.now()
+#        self.update_lights()
+#        self.lights_times.add(self.now() - start)
+#        start = self.now()
+#        self.handle_buttons()
+#        self.buttons_times.add(self.now() - start)
+#
+#        if self.now() >= self.next_log_time_ms:
+#            self.next_log_time_ms += self.log_interval_ms
+#            self.log(self.now(), "Lid update times", self.lid.update_times)
+#            self.log(self.now(), "Timer lid times", self.lid_times)
+#            self.log(self.now(), "Timer lights times", self.lights_times)
+#            self.log(self.now(), "Timer buttons times", self.buttons_times)
 
 timer = Timer()
 while True:
     try:
         timer()
+    except:
+        pass
+    """
+    try:
+        timer()
     except Exception as e:
-        timer.log(e)
+        msg = "Exception: {}\n".format(e)
+        try:
+            with open("err.log", "a") as ERR:
+                ERR.write(msg)
+                ERR.flush()
+        except:
+            print(msg)
+    """
